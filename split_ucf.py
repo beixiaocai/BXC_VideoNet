@@ -69,8 +69,8 @@ def split_dataset(src_dir,train_dir,val_dir,split_ratio=0.8, seed=42):
 if __name__ == "__main__":
     # 修改以下路径为你自己的路径
     SRC_DIR = "E:\\download\\UCF50"  # 你的原始 UCF50 文件夹
-    TRAIN_DIR = "E:\\download\\XcVideoNet\\UCF50\\train"  # 输出训练集路径
-    VAL_DIR = "E:\\download\\XcVideoNet\\UCF50\\val"  # 输出验证集路径
+    TRAIN_DIR = "E:\\download\\BXC_VideoNet\\UCF50\\train"  # 输出训练集路径
+    VAL_DIR = "E:\\download\\BXC_VideoNet\\UCF50\\val"  # 输出验证集路径
     SPLIT_RATIO = 0.8  # 80% 训练，20% 验证
 
     split_dataset(

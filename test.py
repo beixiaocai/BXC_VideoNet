@@ -2,14 +2,14 @@ import os
 import torch
 import cv2
 import numpy as np
-from model import XcVideoNetModel
+from model import VideoNetModel
 import time
 
 
 def predict(video_path, model_path):
 
     # 初始化模型
-    model = XcVideoNetModel(num_classes=len(class_names))
+    model = VideoNetModel(num_classes=len(class_names))
     
     # 加载模型权重
     try:
@@ -113,9 +113,15 @@ def predict(video_path, model_path):
 
 if __name__ == '__main__':
     print("test.py start")
-    video_path = 'data/v_HulaHoop_g01_c01.avi'
-    model_path = "models/best_model_epoch16_aac0.9778.pth"
-    class_names = ['Basketball', 'BasketballDunk', 'Biking']  # 根据实际数据集修改
+    video_path = 'data/v_HorseRiding_g01_c02.avi'
+    model_path = "models_20251012001_ucf50/best_model_epoch242_aac0.9314.pth"
+
+    # UCF50数据集的50个动作类别名称 （根据实际数据集修改）
+    class_names = ['BaseballPitch', 'Basketball', 'BenchPress', 'Biking', 'Billiards', 'BreastStroke', 'CleanAndJerk', 'Diving', 'Drumming', 'Fencing', 'GolfSwing', 'HighJump', 'HorseRace', 'HorseRiding', 'HulaHoop', 'JavelinThrow', 'JugglingBalls', 'JumpingJack', 'JumpRope', 'Kayaking', 'Lunges', 'MilitaryParade', 'Mixing', 'Nunchucks', 'PizzaTossing', 'PlayingGuitar', 'PlayingPiano', 'PlayingTabla', 'PlayingViolin', 'PoleVault', 'PommelHorse', 'PullUps', 'Punch', 'PushUps', 'RockClimbingIndoor', 'RopeClimbing', 'Rowing', 'SalsaSpin', 'SkateBoarding', 'Skiing', 'Skijet', 'SoccerJuggling', 'Swing', 'TaiChi', 'TennisSwing', 'ThrowDiscus', 'TrampolineJumping', 'VolleyballSpiking', 'WalkingWithDog', 'YoYo']
+
+    # 打印验证长度
+    print(f"class_names: {len(class_names)}")
+    print("video_path: ",video_path)
 
     if not os.path.exists(video_path):
         print(f"测试视频 {video_path} 不存在。请将测试视频放在当前目录并重命名为 'test_video.mp4'")
@@ -126,6 +132,6 @@ if __name__ == '__main__':
         result = predict(video_path,model_path)
         print(f'Predicted class: {result["class"]}')
         print(f'Confidence: {result["confidence"]:.4f}')
-        print('Class probabilities:')
+        print('预测结果:')
         for cls, prob in result['all_probabilities'].items():
             print(f'  {cls}: {prob:.4f}')

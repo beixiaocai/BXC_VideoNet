@@ -1,6 +1,6 @@
 import torch
 import torch.onnx
-from VideoClassifier import VideoClassifier
+from model import VideoNetModel
 import os
 
 
@@ -10,7 +10,7 @@ def convert_to_onnx(model_path='best_model.pth', output_path='best_model.onnx',n
     print(f"输出ONNX文件: {output_path}")
 
     # 初始化模型
-    model = VideoClassifier(num_classes=num_classes)
+    model = VideoNetModel(num_classes=num_classes)
     
     # 加载模型权重 - 处理多GPU训练的情况
     try:
@@ -96,12 +96,16 @@ def verify_onnx_model(onnx_path):
 
 
 if __name__ == '__main__':
-    model_path = "models/best_model_epoch16_aac0.9778.pth"
-    output_path = "models/best_model_epoch16_aac0.9778.onnx"
+    model_path = "models_20251012001_ucf50/best_model_epoch242_aac0.9314.pth"
+    output_path = "models_20251012001_ucf50/best_model_epoch242_aac0.9314.onnx"
+    # UCF50数据集的50个动作类别名称 （根据实际数据集修改）
+    class_names = ['BaseballPitch', 'Basketball', 'BenchPress', 'Biking', 'Billiards', 'BreastStroke', 'CleanAndJerk', 'Diving', 'Drumming', 'Fencing', 'GolfSwing', 'HighJump', 'HorseRace', 'HorseRiding', 'HulaHoop', 'JavelinThrow', 'JugglingBalls', 'JumpingJack', 'JumpRope', 'Kayaking', 'Lunges', 'MilitaryParade', 'Mixing', 'Nunchucks', 'PizzaTossing', 'PlayingGuitar', 'PlayingPiano', 'PlayingTabla', 'PlayingViolin', 'PoleVault', 'PommelHorse', 'PullUps', 'Punch', 'PushUps', 'RockClimbingIndoor', 'RopeClimbing', 'Rowing', 'SalsaSpin', 'SkateBoarding', 'Skiing', 'Skijet', 'SoccerJuggling', 'Swing', 'TaiChi', 'TennisSwing', 'ThrowDiscus', 'TrampolineJumping', 'VolleyballSpiking', 'WalkingWithDog', 'YoYo']
+    print(f"class_names: {len(class_names)}")
+    num_classes = len(class_names)
 
     """
     
-    mo --input_model models/best_model_epoch16_aac0.9778.onnx  --output_dir models/best_model_epoch16_aac0.9778_ov_model
+    mo --input_model models_20251012001_ucf50/best_model_epoch242_aac0.9314.onnx  --output_dir models_20251012001_ucf50/best_model_epoch242_aac0.9314_ov_model
     
     """
 
@@ -109,7 +113,7 @@ if __name__ == '__main__':
     convert_to_onnx(
         model_path=model_path,
         output_path=output_path,
-        num_classes=3,
+        num_classes=num_classes,
         dynamic_input=False
     )
     

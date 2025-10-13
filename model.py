@@ -3,9 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class XcVideoNetModel(nn.Module):
+class VideoNetModel(nn.Module):
     def __init__(self, num_classes=10, input_size=(16, 224, 224)):
-        super(XcVideoNetModel, self).__init__()
+        super(VideoNetModel, self).__init__()
         
         # 轻量级视频分类网络设计，适合边缘端部署
         # 使用时空分离卷积减少计算量

@@ -81,6 +81,8 @@ UCF50/
 │   ├── ApplyLipstick/2.avi
 │   └── ...
 
+//将开源网站下载的UCF50数据集，转换为训练+验证的训练数据集
+python split_ucf.py
 
 //训练模型
 python train.py
