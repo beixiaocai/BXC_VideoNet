@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}模型测试 - BXC_VideoNet{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 class="card-title">🧪 模型测试</h2>
+    <p style="margin-bottom: 12px; color: #666; font-size: 11px;">
+        上传视频片段，使用训练好的模型进行预测
+    </p>
+
+    <div class="form-group">
+        <label class="form-label">选择模型</label>
+        <select id="test-model" class="form-select">
+            <option value="">请选择模型...</option>
+        </select>
+    </div>
+
+    <div class="file-upload" id="test-upload-area">
+        <div class="file-upload-icon">🎥</div>
+        <h3 style="margin-bottom: 6px; font-size: 13px;">点击或拖拽上传测试视频</h3>
+        <p style="color: #666; font-size: 11px;">支持 .mp4, .avi, .mov 格式</p>
+        <input type="file" id="test-video-file" accept=".mp4,.avi,.mov" style="display: none;">
+    </div>
+
+    <div id="selected-video" style="margin-top: 12px;"></div>
+
+    <button class="btn btn-primary" id="predict-btn" style="margin-top: 8px;" disabled>
+        🔮 开始预测
+    </button>
+</div>
+
+<div class="card" id="result-card" style="display: none;">
+    <h2 class="card-title">📊 预测结果</h2>
+    
+    <div class="grid-item" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin-bottom: 15px; padding: 15px;">
+        <h3 style="margin-bottom: 10px; font-size: 13px;">预测类别</h3>
+        <p style="font-size: 28px; font-weight: bold; margin: 12px 0;" id="predicted-class">-</p>
+        <p style="font-size: 14px; opacity: 0.9;">
+            置信度: <span id="confidence" style="font-weight: bold;">0%</span>
+        </p>
+    </div>
+
+    <h3 style="margin-bottom: 10px; color: #333; font-size: 13px;">Top 5 预测概率</h3>
+    <div id="top5-results"></div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">📈 测试历史</h2>
+    <div id="test-history">
+        <p style="text-align: center; color: #999; padding: 12px; font-size: 11px;">暂无测试记录</p>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let selectedTestFile = null;
+    let testHistory = [];
+
+    // 页面加载时获取模型列表
+    window.addEventListener('load', () => {
+        loadTestModels();
+        loadTestHistory();
+    });
+
+    // 加载模型列表
+    function loadTestModels() {
+        request('/api/models/list')
+            .then(data => {
+                const modelSelect = document.getElementById('test-model');
+                modelSelect.innerHTML = '<option value="">请选择模型...</option>';
+                
+                data.models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.name;
+                    option.textContent = `${model.name} (${model.size})`;
+                    modelSelect.appendChild(option);
+                });
+            });
+    }
+
+    // 文件上传区域
+    const testUploadArea = document.getElementById('test-upload-area');
+    const testFileInput = document.getElementById('test-video-file');
+
+    testUploadArea.addEventListener('click', () => {
+        testFileInput.click();
+    });
+
+    testUploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        testUploadArea.style.background = 'rgba(102, 126, 234, 0.2)';
+    });
+
+    testUploadArea.addEventListener('dragleave', () => {
+        testUploadArea.style.background = 'rgba(102, 126, 234, 0.05)';
+    });
+
+    testUploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        testUploadArea.style.background = 'rgba(102, 126, 234, 0.05)';
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFileSelect(files[0]);
+        }
+    });
+
+    testFileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFileSelect(e.target.files[0]);
+        }
+    });
+
+    function handleFileSelect(file) {
+        if (!file.name.match(/\.(mp4|avi|mov)$/i)) {
+            showMessage('error', '请选择有效的视频文件（.mp4, .avi, .mov）');
+            return;
+        }
+
+        selectedTestFile = file;
+        
+        const selectedDiv = document.getElementById('selected-video');
+        selectedDiv.innerHTML = `
+            <div style="background: white; padding: 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                <div>
+                    <strong>📹 ${file.name}</strong>
+                    <p style="color: #999; margin-top: 3px;">${(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                </div>
+                <button class="btn btn-secondary" onclick="clearSelectedFile()" style="padding: 5px 12px; font-size: 10px;">清除</button>
+            </div>
+        `;
+
+        updatePredictButton();
+    }
+
+    function clearSelectedFile() {
+        selectedTestFile = null;
+        document.getElementById('selected-video').innerHTML = '';
+        testFileInput.value = '';
+        updatePredictButton();
+    }
+
+    // 模型选择变化
+    document.getElementById('test-model').addEventListener('change', () => {
+        updatePredictButton();
+    });
+
+    function updatePredictButton() {
+        const btn = document.getElementById('predict-btn');
+        const model = document.getElementById('test-model').value;
+        btn.disabled = !(selectedTestFile && model);
+    }
+
+    // 开始预测
+    document.getElementById('predict-btn').addEventListener('click', () => {
+        const modelName = document.getElementById('test-model').value;
+        
+        if (!selectedTestFile || !modelName) {
+            showMessage('error', '请选择模型和测试视频');
+            return;
+        }
+
+        const btn = document.getElementById('predict-btn');
+        btn.disabled = true;
+        btn.textContent = '🔄 预测中...';
+
+        const formData = new FormData();
+        formData.append('video', selectedTestFile);
+        formData.append('model_name', modelName);
+
+        fetch('/api/test/predict', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(result => {
+            btn.disabled = false;
+            btn.textContent = '🔮 开始预测';
+
+            if (result.success) {
+                showMessage('success', '预测完成！');
+                displayResult(result.result);
+                
+                // 添加到历史记录
+                addToHistory({
+                    video: selectedTestFile.name,
+                    model: modelName,
+                    result: result.result,
+                    time: new Date().toLocaleString()
+                });
+            } else {
+                showMessage('error', result.message);
+            }
+        })
+        .catch(error => {
+            btn.disabled = false;
+            btn.textContent = '🔮 开始预测';
+            showMessage('error', '预测失败: ' + error.message);
+        });
+    });
+
+    // 显示预测结果
+    function displayResult(result) {
+        document.getElementById('result-card').style.display = 'block';
+        document.getElementById('predicted-class').textContent = result.predicted_class;
+        document.getElementById('confidence').textContent = (result.confidence * 100).toFixed(2) + '%';
+
+        // 显示 Top 5
+        let top5Html = '';
+        result.top5.forEach((item, idx) => {
+            const percentage = (item.probability * 100).toFixed(2);
+            const barColor = idx === 0 ? '#667eea' : '#a8b8ea';
+            
+            top5Html += `
+                <div style="margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 11px;">
+                        <strong>${idx + 1}. ${item.class}</strong>
+                        <span>${percentage}%</span>
+                    </div>
+                    <div style="background: #e0e0e0; border-radius: 8px; height: 16px; overflow: hidden;">
+                        <div style="background: ${barColor}; height: 100%; width: ${percentage}%; transition: width 0.5s;"></div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        document.getElementById('top5-results').innerHTML = top5Html;
+
+        // 滚动到结果区域
+        document.getElementById('result-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // 添加到历史记录
+    function addToHistory(record) {
+        testHistory.unshift(record);
+        
+        // 只保留最近10条
+        if (testHistory.length > 10) {
+            testHistory = testHistory.slice(0, 10);
+        }
+        
+        loadTestHistory();
+    }
+
+    // 加载测试历史
+    function loadTestHistory() {
+        const historyDiv = document.getElementById('test-history');
+        
+        if (testHistory.length === 0) {
+            historyDiv.innerHTML = '<p style="text-align: center; color: #999; padding: 12px; font-size: 11px;">暂无测试记录</p>';
+            return;
+        }
+
+        let html = '<table class="table"><thead><tr><th>时间</th><th>视频</th><th>模型</th><th>预测结果</th><th>置信度</th></tr></thead><tbody>';
+        
+        testHistory.forEach(record => {
+            html += `<tr>
+                <td>${record.time}</td>
+                <td>${record.video}</td>
+                <td style="font-size: 12px;">${record.model}</td>
+                <td><strong>${record.result.predicted_class}</strong></td>
+                <td>${(record.result.confidence * 100).toFixed(2)}%</td>
+            </tr>`;
+        });
+        
+        html += '</tbody></table>';
+        historyDiv.innerHTML = html;
+    }
+</script>
+{% endblock %}

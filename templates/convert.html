@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+
+{% block title %}模型转换 - BXC_VideoNet{% endblock %}
+
+{% block content %}
+<div id="message-container"></div>
+
+<!-- 选择模型 -->
+<div class="card">
+    <h2 class="card-title">🔄 选择训练模型</h2>
+    <div class="form-group">
+        <label class="form-label">选择要转换的模型</label>
+        <select id="model-select" class="form-select">
+            <option value="">-- 请选择模型 --</option>
+        </select>
+    </div>
+    <div id="model-info" style="display: none; margin-top: 10px; padding: 10px; background: #e7f3ff; border-radius: 6px; font-size: 13px;">
+        <p style="margin: 4px 0;"><strong>文件名：</strong><span id="info-name"></span></p>
+        <p style="margin: 4px 0;"><strong>大小：</strong><span id="info-size"></span></p>
+        <p style="margin: 4px 0;"><strong>创建时间：</strong><span id="info-created"></span></p>
+    </div>
+</div>
+
+<!-- 转换配置 -->
+<div class="card">
+    <h2 class="card-title">⚙️ 转换配置</h2>
+    
+    <div class="form-group">
+        <label class="form-label">目标格式</label>
+        <div style="display: flex; gap: 15px; margin-top: 8px;">
+            <label style="display: flex; align-items: center; cursor: pointer;">
+                <input type="radio" name="format" value="onnx" checked style="margin-right: 6px;">
+                <span style="font-size: 14px;">ONNX 格式</span>
+            </label>
+            <label style="display: flex; align-items: center; cursor: pointer;">
+                <input type="radio" name="format" value="openvino" style="margin-right: 6px;">
+                <span style="font-size: 14px;">OpenVINO 格式</span>
+            </label>
+        </div>
+        <p style="font-size: 12px; color: #666; margin-top: 6px;">
+            💡 ONNX格式用于跨平台部署，OpenVINO格式用于Intel平台优化推理
+        </p>
+    </div>
+    
+    <div class="form-group" id="dynamic-input-group">
+        <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="dynamic-input" style="margin-right: 6px;">
+            <span class="form-label" style="margin: 0;">启用动态输入维度（仅ONNX）</span>
+        </label>
+        <p style="font-size: 12px; color: #666; margin-top: 6px;">
+            支持不同批次大小和帧数的视频输入
+        </p>
+    </div>
+    
+    <button id="convert-btn" class="btn btn-primary" style="width: 100%;">
+        🚀 开始转换
+    </button>
+</div>
+
+<!-- 转换日志 -->
+<div class="card">
+    <h2 class="card-title">📋 转换日志</h2>
+    <div id="convert-log" class="log-box" style="min-height: 150px;">
+        等待开始转换...
+    </div>
+</div>
+
+<!-- 已转换模型列表 -->
+<div class="card">
+    <h2 class="card-title">📦 已转换模型</h2>
+    <button id="refresh-converted-btn" class="btn btn-secondary" style="margin-bottom: 10px;">
+        🔄 刷新列表
+    </button>
+    <div id="converted-models-list"></div>
+</div>
+
+<script>
+let allModels = [];
+let isConverting = false;
+
+// 页面加载时获取模型列表
+document.addEventListener('DOMContentLoaded', () => {
+    loadModels();
+    loadConvertedModels();
+    
+    // 监听格式选择变化
+    document.querySelectorAll('input[name="format"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            const dynamicInputGroup = document.getElementById('dynamic-input-group');
+            if (e.target.value === 'onnx') {
+                dynamicInputGroup.style.display = 'block';
+            } else {
+                dynamicInputGroup.style.display = 'none';
+            }
+        });
+    });
+});
+
+// 加载模型列表
+async function loadModels() {
+    try {
+        const response = await fetch('/api/models/list');
+        const data = await response.json();
+        
+        allModels = data.models || [];
+        const select = document.getElementById('model-select');
+        select.innerHTML = '<option value="">-- 请选择模型 --</option>';
+        
+        allModels.forEach((model, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            option.textContent = model.name;
+            select.appendChild(option);
+        });
+        
+        // 监听选择变化
+        select.addEventListener('change', (e) => {
+            const index = e.target.value;
+            if (index !== '') {
+                const model = allModels[index];
+                showModelInfo(model);
+            } else {
+                document.getElementById('model-info').style.display = 'none';
+            }
+        });
+        
+    } catch (error) {
+        showMessage('error', '加载模型列表失败: ' + error.message);
+    }
+}
+
+// 显示模型信息
+function showModelInfo(model) {
+    document.getElementById('info-name').textContent = model.name;
+    document.getElementById('info-size').textContent = model.size;
+    document.getElementById('info-created').textContent = model.created;
+    document.getElementById('model-info').style.display = 'block';
+}
+
+// 开始转换
+document.getElementById('convert-btn').addEventListener('click', async () => {
+    if (isConverting) {
+        showMessage('error', '转换正在进行中，请稍候');
+        return;
+    }
+    
+    const selectIndex = document.getElementById('model-select').value;
+    if (!selectIndex) {
+        showMessage('error', '请先选择要转换的模型');
+        return;
+    }
+    
+    const selectedModel = allModels[selectIndex];
+    const format = document.querySelector('input[name="format"]:checked').value;
+    const dynamicInput = document.getElementById('dynamic-input').checked;
+    
+    isConverting = true;
+    document.getElementById('convert-btn').disabled = true;
+    document.getElementById('convert-btn').textContent = '🔄 转换中...';
+    
+    // 清空日志
+    const logBox = document.getElementById('convert-log');
+    logBox.innerHTML = `开始转换模型: ${selectedModel.name}
+目标格式: ${format.toUpperCase()}
+动态输入: ${dynamicInput ? '启用' : '禁用'}
+
+正在处理...
+`;
+    
+    try {
+        const response = await fetch('/api/models/convert', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                model_name: selectedModel.name,
+                output_format: format,
+                dynamic_input: dynamicInput
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            logBox.innerHTML += `\n✅ 转换成功！\n`;
+            logBox.innerHTML += `输出格式: ${result.format}\n`;
+            if (result.output_file) {
+                logBox.innerHTML += `输出文件: ${result.output_file}\n`;
+            } else if (result.output_dir) {
+                logBox.innerHTML += `输出目录: ${result.output_dir}\n`;
+            }
+            showMessage('success', result.message);
+            
+            // 刷新已转换模型列表
+            setTimeout(() => loadConvertedModels(), 500);
+        } else {
+            logBox.innerHTML += `\n❌ 转换失败: ${result.message}\n`;
+            showMessage('error', result.message);
+        }
+        
+    } catch (error) {
+        logBox.innerHTML += `\n❌ 转换失败: ${error.message}\n`;
+        showMessage('error', '转换失败: ' + error.message);
+    } finally {
+        isConverting = false;
+        document.getElementById('convert-btn').disabled = false;
+        document.getElementById('convert-btn').textContent = '🚀 开始转换';
+    }
+});
+
+// 加载已转换的模型
+async function loadConvertedModels() {
+    try {
+        const response = await fetch('/api/models/list');
+        const data = await response.json();
+        
+        const models = data.models || [];
+        const container = document.getElementById('converted-models-list');
+        
+        // 筛选出ONNX和OpenVINO模型
+        const onnxModels = models.filter(m => m.name.endsWith('.onnx'));
+        const openvinoModels = models.filter(m => m.name.includes('_openvino'));
+        
+        if (onnxModels.length === 0 && openvinoModels.length === 0) {
+            container.innerHTML = '<p style="color: #999; font-size: 14px;">暂无已转换的模型</p>';
+            return;
+        }
+        
+        let html = '<div style="display: grid; gap: 12px;">';
+        
+        // ONNX模型
+        if (onnxModels.length > 0) {
+            html += '<h3 style="font-size: 15px; color: #667eea; margin-top: 10px;">ONNX 模型</h3>';
+            onnxModels.forEach(model => {
+                html += `
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; border-left: 3px solid #667eea;">
+                        <p style="margin: 4px 0; font-weight: 600; font-size: 14px;">${model.name}</p>
+                        <p style="margin: 4px 0; font-size: 13px; color: #666;">大小: ${model.size} | 创建: ${model.created}</p>
+                    </div>
+                `;
+            });
+        }
+        
+        // OpenVINO模型（显示目录）
+        if (openvinoModels.length > 0) {
+            html += '<h3 style="font-size: 15px; color: #56ab2f; margin-top: 10px;">OpenVINO 模型</h3>';
+            openvinoModels.forEach(model => {
+                html += `
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; border-left: 3px solid #56ab2f;">
+                        <p style="margin: 4px 0; font-weight: 600; font-size: 14px;">${model.name}</p>
+                        <p style="margin: 4px 0; font-size: 13px; color: #666;">创建: ${model.created}</p>
+                    </div>
+                `;
+            });
+        }
+        
+        html += '</div>';
+        container.innerHTML = html;
+        
+    } catch (error) {
+        console.error('加载已转换模型失败:', error);
+    }
+}
+
+// 刷新按钮
+document.getElementById('refresh-converted-btn').addEventListener('click', loadConvertedModels);
+
+// 消息提示函数
+function showMessage(type, message) {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `message message-${type} show`;
+    msgDiv.textContent = message;
+    
+    const container = document.getElementById('message-container');
+    container.appendChild(msgDiv);
+    
+    setTimeout(() => {
+        msgDiv.remove();
+    }, 5000);
+}
+</script>
+
+<style>
+/* 单选框和复选框样式优化 */
+input[type="radio"], input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+#message-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    max-width: 400px;
+}
+</style>
+
+{% endblock %}

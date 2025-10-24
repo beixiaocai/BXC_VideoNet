@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 # from dataset_image import VideoDataset
 from dataset_video import VideoDataset
-from model import XcVideoNetModel
+from model import VideoNetModel
 from tqdm import tqdm
 import numpy as np
 class EarlyStopping:
@@ -104,7 +104,7 @@ def train():
     class_names = image_datasets['train'].classes
 
     # 模型初始化
-    model = XcVideoNetModel(num_classes=len(class_names))
+    model = VideoNetModel(num_classes=len(class_names))
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"Training on device: {device}")
 

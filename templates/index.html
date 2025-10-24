@@ -1,0 +1,448 @@
+{% extends "base.html" %}
+
+{% block title %}数据集管理 - BXC_VideoNet{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 class="card-title">📊 数据集统计</h2>
+    <div class="grid">
+        <div class="stat-card">
+            <div class="stat-label">训练集视频数</div>
+            <div class="stat-number" id="train-count">0</div>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);">
+            <div class="stat-label">验证集视频数</div>
+            <div class="stat-number" id="val-count">0</div>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+            <div class="stat-label">类别数</div>
+            <div class="stat-number" id="class-count">0</div>
+        </div>
+    </div>
+
+    <div id="class-details" style="margin-top: 12px;"></div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">📁 类别管理 & 上传视频</h2>
+    <p style="margin-bottom: 12px; color: #666; font-size: 11px;">
+        <strong>操作步骤：</strong>① 创建类别文件夹 → ② 点击类别卡片选中 → ③ 拖入或选择视频文件上传
+    </p>
+
+    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <input type="text" id="new-category-name" class="form-input" placeholder="输入类别名称（如：Basketball）" style="flex: 1;">
+        <button class="btn btn-success" id="create-category-btn">
+            ➕ 创建类别
+        </button>
+    </div>
+
+    <div id="categories-list" style="margin-bottom: 12px;"></div>
+
+    <div class="file-upload" id="upload-area">
+        <div class="file-upload-icon">📹</div>
+        <h3 style="margin-bottom: 6px; font-size: 13px;">点击选择视频文件，或拖拽文件到这里</h3>
+        <p style="color: #666; font-size: 11px;">支持 .mp4, .avi, .mov 格式，单个文件最大 500MB</p>
+        <p style="color: #667eea; font-weight: bold; margin-top: 6px; font-size: 11px;">✨ 支持多文件同时上传，极速高效！</p>
+        <p id="selected-category-hint" style="margin-top: 8px; color: #dc3545; font-weight: bold; font-size: 11px; display: none;"></p>
+        <input type="file" id="video-file" accept=".mp4,.avi,.mov" style="display: none;" multiple>
+    </div>
+
+    <div id="upload-list" style="margin-top: 12px;"></div>
+
+    <button class="btn btn-primary" id="upload-btn" style="margin-top: 8px;" disabled>
+        开始上传
+    </button>
+</div>
+
+<div class="card">
+    <h2 class="card-title">✂️ 分割数据集</h2>
+    <p style="margin-bottom: 12px; color: #666; font-size: 11px;">
+        将上传的视频按照指定比例分割为训练集和验证集，系统会自动将各类别的视频分别分配到 train/ 和 val/ 目录
+    </p>
+
+    <div class="form-group">
+        <label class="form-label">训练集比例</label>
+        <input type="range" id="split-ratio" min="0.5" max="0.95" step="0.05" value="0.8" 
+               style="width: 100%;" oninput="document.getElementById('ratio-value').textContent = (this.value * 100).toFixed(0) + '%'">
+        <div style="text-align: center; margin-top: 6px; font-size: 18px; font-weight: bold; color: #667eea;">
+            <span id="ratio-value">80%</span>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">随机种子（用于可重复性）</label>
+        <input type="number" id="split-seed" class="form-input" value="42">
+    </div>
+
+    <div style="display: flex; gap: 8px;">
+        <button class="btn btn-success" id="split-btn">
+            🔄 开始分割
+        </button>
+        <button class="btn btn-danger" id="clear-uploads-btn">
+            🗑️ 清空上传目录
+        </button>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let selectedFiles = [];
+    let selectedCategory = null;  // 当前选中的类别
+
+    // 页面加载时获取统计信息和类别列表
+    window.addEventListener('load', () => {
+        loadStats();
+        loadCategories();
+    });
+
+    // 加载数据集统计
+    function loadStats() {
+        request('/api/dataset/stats')
+            .then(data => {
+                document.getElementById('train-count').textContent = data.total_train || 0;
+                document.getElementById('val-count').textContent = data.total_val || 0;
+                document.getElementById('class-count').textContent = data.classes.length || 0;
+
+                // 显示类别详情（紧凑样式）
+                if (data.classes.length > 0) {
+                    let html = '<table class="table"><thead><tr><th>类别名称</th><th>训练集</th><th>验证集</th><th>总计</th></tr></thead><tbody>';
+                    data.classes.forEach(cls => {
+                        html += `<tr>
+                            <td><strong>${cls.name}</strong></td>
+                            <td>${cls.train}</td>
+                            <td>${cls.val}</td>
+                            <td>${cls.train + cls.val}</td>
+                        </tr>`;
+                    });
+                    html += '</tbody></table>';
+                    document.getElementById('class-details').innerHTML = html;
+                } else {
+                    document.getElementById('class-details').innerHTML = '<p style="text-align: center; color: #999; padding: 12px; font-size: 11px;">暂无数据集，请先上传视频</p>';
+                }
+            });
+    }
+
+    // 加载类别列表
+    function loadCategories() {
+        request('/api/categories/list')
+            .then(data => {
+                const categoriesList = document.getElementById('categories-list');
+                
+                if (data.categories.length === 0) {
+                    categoriesList.innerHTML = '<p style="text-align: center; color: #999; padding: 15px; font-size: 13px;">暂无类别，请先创建类别文件夹</p>';
+                    return;
+                }
+
+                // 更新类别列表显示（紧凑布局）
+                let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px;">';
+                data.categories.forEach(cat => {
+                    const isSelected = selectedCategory === cat.name;
+                    html += `
+                        <div class="category-card" data-category="${cat.name}" 
+                             style="background: ${isSelected ? '#e7f3ff' : 'white'}; 
+                                    padding: 10px; 
+                                    border-radius: 6px; 
+                                    box-shadow: 0 2px 4px rgba(0,0,0,0.06); 
+                                    position: relative; 
+                                    cursor: pointer;
+                                    border: 2px solid ${isSelected ? '#667eea' : 'transparent'};
+                                    transition: all 0.3s;"
+                             onclick="selectCategory('${cat.name}')">
+                            <button onclick="event.stopPropagation(); deleteCategory('${cat.name}');" 
+                                    style="position: absolute; top: 3px; right: 3px; background: #dc3545; color: white; border: none; border-radius: 3px; padding: 2px 5px; cursor: pointer; font-size: 9px;">删除</button>
+                            <div style="font-size: 24px; text-align: center; margin-bottom: 4px;">📁</div>
+                            <h4 style="text-align: center; margin-bottom: 4px; font-size: 11px; font-weight: 600;">${cat.name}</h4>
+                            <p style="text-align: center; color: #666; font-size: 10px;">${cat.video_count} 个视频</p>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                categoriesList.innerHTML = html;
+
+                updateUploadButton();
+            });
+    }
+
+    // 选中类别
+    function selectCategory(categoryName) {
+        selectedCategory = categoryName;
+        
+        // 更新所有类别卡片的样式
+        document.querySelectorAll('.category-card').forEach(card => {
+            const cardCategory = card.getAttribute('data-category');
+            if (cardCategory === categoryName) {
+                card.style.background = '#e7f3ff';
+                card.style.border = '2px solid #667eea';
+                card.style.transform = 'scale(1.05)';
+            } else {
+                card.style.background = 'white';
+                card.style.border = '2px solid transparent';
+                card.style.transform = 'scale(1)';
+            }
+        });
+
+        // 更新提示信息
+        const hint = document.getElementById('selected-category-hint');
+        hint.textContent = `已选中类别：${categoryName}`;
+        hint.style.display = 'block';
+
+        updateUploadButton();
+    }
+
+    // 创建类别
+    document.getElementById('create-category-btn').addEventListener('click', () => {
+        const categoryName = document.getElementById('new-category-name').value.trim();
+        
+        if (!categoryName) {
+            showMessage('error', '请输入类别名称');
+            return;
+        }
+
+        request('/api/categories/create', {
+            method: 'POST',
+            body: JSON.stringify({ name: categoryName })
+        }).then(result => {
+            if (result.success) {
+                showMessage('success', result.message);
+                document.getElementById('new-category-name').value = '';
+                loadCategories();
+            } else {
+                showMessage('error', result.message);
+            }
+        });
+    });
+
+    // 删除类别
+    function deleteCategory(categoryName) {
+        if (confirm(`确定要删除类别 "${categoryName}" 吗？\n\n此操作会删除该类别下的所有视频文件！`)) {
+            request('/api/categories/delete', {
+                method: 'POST',
+                body: JSON.stringify({ name: categoryName })
+            }).then(result => {
+                if (result.success) {
+                    showMessage('success', result.message);
+                    loadCategories();
+                } else {
+                    showMessage('error', result.message);
+                }
+            });
+        }
+    }
+
+    // 文件上传区域
+    const uploadArea = document.getElementById('upload-area');
+    const fileInput = document.getElementById('video-file');
+
+    // 点击上传区域打开文件选择器
+    uploadArea.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    // 拖拽相关事件
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.style.background = 'rgba(102, 126, 234, 0.2)';
+    });
+
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.style.background = 'rgba(102, 126, 234, 0.05)';
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.style.background = 'rgba(102, 126, 234, 0.05)';
+        
+        const files = Array.from(e.dataTransfer.files).filter(f => 
+            f.name.toLowerCase().endsWith('.mp4') || 
+            f.name.toLowerCase().endsWith('.avi') || 
+            f.name.toLowerCase().endsWith('.mov')
+        );
+        
+        if (files.length > 0) {
+            selectedFiles = files;
+            displayFileList();
+        } else {
+            showMessage('error', '请拖入有效的视频文件（.mp4, .avi, .mov）');
+        }
+    });
+
+    // 文件选择变化
+    fileInput.addEventListener('change', (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length > 0) {
+            selectedFiles = files;
+            displayFileList();
+        }
+    });
+
+    function updateUploadButton() {
+        const btn = document.getElementById('upload-btn');
+        btn.disabled = !selectedCategory || selectedFiles.length === 0;
+    }
+
+    function displayFileList() {
+        const listDiv = document.getElementById('upload-list');
+        if (selectedFiles.length === 0) {
+            listDiv.innerHTML = '';
+            updateUploadButton();
+            return;
+        }
+
+        let html = '<h4 style="margin-bottom: 6px; font-size: 11px;">已选择 ' + selectedFiles.length + ' 个文件：</h4><ul style="list-style: none;" id="file-list">';
+        selectedFiles.forEach((file, idx) => {
+            html += `<li id="file-${idx}" style="padding: 4px 8px; background: white; margin-bottom: 3px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 10px;">
+                <span>📹 ${file.name}</span>
+                <span style="color: #999;">${(file.size / 1024 / 1024).toFixed(2)} MB</span>
+            </li>`;
+        });
+        html += '</ul>';
+        listDiv.innerHTML = html;
+        updateUploadButton();
+    }
+
+    // 上传视频（并行上传优化 + 实时进度）
+    document.getElementById('upload-btn').addEventListener('click', async () => {
+        if (!selectedCategory) {
+            showMessage('error', '请先点击选中一个类别文件夹');
+            return;
+        }
+
+        if (selectedFiles.length === 0) {
+            showMessage('error', '请选择视频文件');
+            return;
+        }
+
+        const btn = document.getElementById('upload-btn');
+        btn.disabled = true;
+        btn.textContent = '上传中...';
+
+        // 并行上传所有文件，并显示实时进度
+        const uploadPromises = selectedFiles.map((file, index) => {
+            const formData = new FormData();
+            formData.append('video', file);
+            formData.append('category', selectedCategory);
+
+            // 更新文件状态为上传中
+            const fileItem = document.getElementById(`file-${index}`);
+            if (fileItem) {
+                fileItem.style.background = '#fff3cd';
+                fileItem.innerHTML = `
+                    <span style="font-size: 12px;">🔄 ${file.name}</span>
+                    <span style="color: #856404; font-size: 11px;">上传中...</span>
+                `;
+            }
+
+            return fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(result => {
+                // 更新文件状态
+                if (fileItem) {
+                    if (result.success) {
+                        fileItem.style.background = '#d4edda';
+                        fileItem.innerHTML = `
+                            <span style="font-size: 10px;">✅ ${file.name}</span>
+                            <span style="color: #155724; font-size: 9px;">上传成功</span>
+                        `;
+                    } else {
+                        fileItem.style.background = '#f8d7da';
+                        fileItem.innerHTML = `
+                            <span style="font-size: 10px;">❌ ${file.name}</span>
+                            <span style="color: #721c24; font-size: 9px;">上传失败</span>
+                        `;
+                    }
+                }
+                return { success: result.success, filename: file.name };
+            })
+            .catch(error => {
+                // 错误状态
+                if (fileItem) {
+                    fileItem.style.background = '#f8d7da';
+                    fileItem.innerHTML = `
+                        <span style="font-size: 12px;">❌ ${file.name}</span>
+                        <span style="color: #721c24; font-size: 11px;">网络错误</span>
+                    `;
+                }
+                return { success: false, filename: file.name };
+            });
+        });
+
+        // 等待所有上传完成
+        try {
+            const results = await Promise.all(uploadPromises);
+            const successCount = results.filter(r => r.success).length;
+            const failCount = results.filter(r => !r.success).length;
+
+            btn.disabled = false;
+            btn.textContent = '开始上传';
+            
+            if (successCount > 0) {
+                showMessage('success', `成功上传 ${successCount} 个视频${failCount > 0 ? '，失败 ' + failCount + ' 个' : ''}`);
+                
+                // 3秒后清空文件列表并刷新类别
+                setTimeout(() => {
+                    selectedFiles = [];
+                    displayFileList();
+                    loadCategories();
+                }, 3000);
+            } else {
+                showMessage('error', '所有文件上传失败，请检查文件格式和大小');
+            }
+        } catch (error) {
+            btn.disabled = false;
+            btn.textContent = '开始上传';
+            showMessage('error', '上传过程中发生错误');
+        }
+    });
+
+    // 分割数据集
+    document.getElementById('split-btn').addEventListener('click', () => {
+        const ratio = parseFloat(document.getElementById('split-ratio').value);
+        const seed = parseInt(document.getElementById('split-seed').value);
+
+        if (confirm(`确定要按照 ${(ratio * 100).toFixed(0)}% 训练集、${((1-ratio) * 100).toFixed(0)}% 验证集的比例分割数据集吗？\n\n此操作会清空现有的训练集和验证集！`)) {
+            const btn = document.getElementById('split-btn');
+            btn.disabled = true;
+            btn.textContent = '分割中...';
+
+            request('/api/dataset/split', {
+                method: 'POST',
+                body: JSON.stringify({
+                    train_ratio: ratio,
+                    seed: seed
+                })
+            }).then(result => {
+                btn.disabled = false;
+                btn.textContent = '🔄 开始分割';
+
+                if (result.success) {
+                    showMessage('success', result.message);
+                    loadStats();
+                } else {
+                    showMessage('error', result.message);
+                }
+            });
+        }
+    });
+
+    // 清空上传目录
+    document.getElementById('clear-uploads-btn').addEventListener('click', () => {
+        if (confirm('确定要清空上传目录吗？\n\n此操作会删除所有类别文件夹和视频！\n注意：已分割的训练集和验证集不会被删除。')) {
+            request('/api/dataset/clear_uploads', {
+                method: 'POST'
+            }).then(result => {
+                if (result.success) {
+                    showMessage('success', result.message);
+                    loadCategories();
+                } else {
+                    showMessage('error', result.message);
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

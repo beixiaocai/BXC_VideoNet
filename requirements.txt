@@ -1,7 +1,41 @@
+# ====================
+# 核心依赖库
+# ====================
+
+# 数值计算与数据处理
 numpy==1.26.4
+
+# 图像和视频处理
 opencv-python==4.8.0.74
+pillow==9.5.0
+
+# 模型导出与推理
 onnxruntime==1.19.0 
 onnx==1.16.1
+openvino==2024.3.0
+openvino-dev==2024.3.0
+
+# 进度条工具
 tqdm==4.65.0
-pillow==9.5.0
-# torch==2.1.0 torchaudio==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu121
+
+# ====================
+# Web管理后台依赖
+# ====================
+
+# Flask Web框架
+flask==3.0.0
+werkzeug==3.0.0
+
+# ====================
+# PyTorch深度学习框架
+# ====================
+# 注意：PyTorch需要根据你的系统和CUDA版本单独安装
+# CPU版本：
+#   pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0
+# GPU版本 (CUDA 12.1)：
+#   pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121
+
+# 如果需要自动安装CPU版本，可以取消注释下面的行：
+# torch==2.1.0
+# torchvision==0.16.0
+# torchaudio==2.1.0

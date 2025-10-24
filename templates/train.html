@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block title %}模型训练 - BXC_VideoNet{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 class="card-title">🎯 训练配置</h2>
+    
+    <div class="grid">
+        <div class="form-group">
+            <label class="form-label">训练轮数 (Epochs)</label>
+            <input type="number" id="num-epochs" class="form-input" value="50" min="1">
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">批次大小 (Batch Size)</label>
+            <input type="number" id="batch-size" class="form-input" value="8" min="1">
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">学习率 (Learning Rate)</label>
+            <input type="number" id="learning-rate" class="form-input" value="0.0005" step="0.0001" min="0.00001">
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">预训练模型（可选，用于断点续训或迁移学习）</label>
+        <select id="pretrained-model" class="form-select">
+            <option value="">从头开始训练</option>
+        </select>
+    </div>
+
+    <div style="display: flex; gap: 8px;">
+        <button class="btn btn-success" id="start-train-btn">
+            🚀 开始训练
+        </button>
+        <button class="btn btn-danger" id="stop-train-btn" style="display: none;">
+            ⏹️ 停止训练
+        </button>
+    </div>
+</div>
+
+<div class="card" id="training-status" style="display: none;">
+    <h2 class="card-title">📈 训练进度</h2>
+    
+    <div class="progress">
+        <div class="progress-bar" id="progress-bar" style="width: 0%;">0%</div>
+    </div>
+
+    <div style="margin-bottom: 12px; font-size: 12px;">
+        <strong>当前轮次:</strong> <span id="current-epoch">0</span> / <span id="total-epochs">0</span>
+    </div>
+
+    <div class="grid" style="grid-template-columns: repeat(2, 1fr);">
+        <div class="grid-item">
+            <h4 style="color: #667eea; margin-bottom: 6px; font-size: 12px;">训练集</h4>
+            <p style="font-size: 11px; margin: 3px 0;"><strong>损失:</strong> <span id="train-loss">0.0000</span></p>
+            <p style="font-size: 11px; margin: 3px 0;"><strong>准确率:</strong> <span id="train-acc">0.0000</span></p>
+        </div>
+        
+        <div class="grid-item">
+            <h4 style="color: #56ab2f; margin-bottom: 6px; font-size: 12px;">验证集</h4>
+            <p style="font-size: 11px; margin: 3px 0;"><strong>损失:</strong> <span id="val-loss">0.0000</span></p>
+            <p style="font-size: 11px; margin: 3px 0;"><strong>准确率:</strong> <span id="val-acc">0.0000</span></p>
+        </div>
+    </div>
+
+    <div class="grid-item" style="margin-top: 12px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 10px;">
+        <h4 style="margin-bottom: 6px; font-size: 12px;">🏆 最佳验证准确率</h4>
+        <p style="font-size: 24px; font-weight: bold; margin: 0;"><span id="best-acc">0.0000</span></p>
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">📋 训练日志</h2>
+    <div class="log-box" id="log-box">
+        等待训练开始...
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">💾 已保存的模型</h2>
+    <div id="model-list">
+        <p style="text-align: center; color: #999; padding: 12px; font-size: 11px;">加载中...</p>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let trainingInterval = null;
+
+    // 页面加载时获取模型列表
+    window.addEventListener('load', () => {
+        loadModels();
+    });
+
+    // 加载模型列表
+    function loadModels() {
+        request('/api/models/list')
+            .then(data => {
+                const modelList = document.getElementById('model-list');
+                const modelSelect = document.getElementById('pretrained-model');
+                
+                if (data.models.length === 0) {
+                    modelList.innerHTML = '<p style="text-align: center; color: #999; padding: 12px; font-size: 11px;">暂无已保存的模型</p>';
+                    return;
+                }
+
+                // 更新模型列表
+                let html = '<table class="table"><thead><tr><th>模型名称</th><th>大小</th><th>创建时间</th></tr></thead><tbody>';
+                data.models.forEach(model => {
+                    html += `<tr>
+                        <td><strong>${model.name}</strong></td>
+                        <td>${model.size}</td>
+                        <td>${model.created}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                modelList.innerHTML = html;
+
+                // 更新预训练模型选择框
+                modelSelect.innerHTML = '<option value="">从头开始训练</option>';
+                data.models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.name;
+                    option.textContent = model.name;
+                    modelSelect.appendChild(option);
+                });
+            });
+    }
+
+    // 开始训练
+    document.getElementById('start-train-btn').addEventListener('click', () => {
+        const numEpochs = parseInt(document.getElementById('num-epochs').value);
+        const batchSize = parseInt(document.getElementById('batch-size').value);
+        const learningRate = parseFloat(document.getElementById('learning-rate').value);
+        const pretrainedModel = document.getElementById('pretrained-model').value;
+
+        if (numEpochs < 1 || batchSize < 1 || learningRate <= 0) {
+            showMessage('error', '请检查训练参数是否正确');
+            return;
+        }
+
+        request('/api/train/start', {
+            method: 'POST',
+            body: JSON.stringify({
+                num_epochs: numEpochs,
+                batch_size: batchSize,
+                learning_rate: learningRate,
+                pretrained_model: pretrainedModel
+            })
+        }).then(result => {
+            if (result.success) {
+                showMessage('success', result.message);
+                document.getElementById('start-train-btn').style.display = 'none';
+                document.getElementById('stop-train-btn').style.display = 'inline-block';
+                document.getElementById('training-status').style.display = 'block';
+                
+                // 开始轮询训练状态
+                startPolling();
+            } else {
+                showMessage('error', result.message);
+            }
+        });
+    });
+
+    // 停止训练
+    document.getElementById('stop-train-btn').addEventListener('click', () => {
+        if (confirm('确定要停止训练吗？')) {
+            request('/api/train/stop', {
+                method: 'POST'
+            }).then(result => {
+                if (result.success) {
+                    showMessage('info', result.message);
+                    stopPolling();
+                }
+            });
+        }
+    });
+
+    // 开始轮询训练状态
+    function startPolling() {
+        if (trainingInterval) {
+            clearInterval(trainingInterval);
+        }
+
+        trainingInterval = setInterval(() => {
+            request('/api/train/status')
+                .then(data => {
+                    updateTrainingStatus(data);
+                    
+                    // 如果训练已结束
+                    if (!data.is_training) {
+                        stopPolling();
+                        document.getElementById('start-train-btn').style.display = 'inline-block';
+                        document.getElementById('stop-train-btn').style.display = 'none';
+                        loadModels();
+                    }
+                });
+        }, 2000);  // 每2秒更新一次
+    }
+
+    // 停止轮询
+    function stopPolling() {
+        if (trainingInterval) {
+            clearInterval(trainingInterval);
+            trainingInterval = null;
+        }
+    }
+
+    // 更新训练状态
+    function updateTrainingStatus(data) {
+        document.getElementById('current-epoch').textContent = data.current_epoch;
+        document.getElementById('total-epochs').textContent = data.total_epochs;
+        document.getElementById('progress-bar').style.width = data.progress + '%';
+        document.getElementById('progress-bar').textContent = data.progress + '%';
+        
+        document.getElementById('train-loss').textContent = data.train_loss.toFixed(4);
+        document.getElementById('train-acc').textContent = data.train_acc.toFixed(4);
+        document.getElementById('val-loss').textContent = data.val_loss.toFixed(4);
+        document.getElementById('val-acc').textContent = data.val_acc.toFixed(4);
+        document.getElementById('best-acc').textContent = data.best_acc.toFixed(4);
+
+        // 更新日志
+        if (data.log && data.log.length > 0) {
+            const logBox = document.getElementById('log-box');
+            logBox.innerHTML = data.log.map(log => `<div>${log}</div>`).join('');
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+    }
+
+    // 页面卸载时停止轮询
+    window.addEventListener('beforeunload', () => {
+        stopPolling();
+    });
+</script>
+{% endblock %}
