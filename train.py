@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import transforms
 # from dataset_image import VideoDataset
-from dataset_video import VideoDataset
+from dataset import VideoDatasetVideo
 from model import VideoNetModel
 from tqdm import tqdm
 import numpy as np
@@ -88,8 +88,10 @@ def train():
 
     # 创建数据集
     image_datasets = {
-        'train': VideoDataset('train',train_dir, data_transforms['train']),
-        'val': VideoDataset('val',val_dir, data_transforms['val'])
+        'train': VideoDatasetVideo('train', train_dir, data_transforms['train'], 
+                                   sampling_strategy='random_segment'),  # 训练时使用随机片段采样
+        'val': VideoDatasetVideo('val', val_dir, data_transforms['val'],
+                                 sampling_strategy='uniform')  # 验证时使用均匀采样
     }
 
     # 数据加载器 - 根据GPU内存调整批次大小

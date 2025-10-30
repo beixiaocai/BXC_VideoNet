@@ -18,7 +18,7 @@ import numpy as np
 
 # 导入项目模块
 from model import VideoNetModel
-from dataset_video import VideoDataset
+from dataset import VideoDatasetVideo
 from torchvision import transforms
 from torch.utils.data import DataLoader
 import torch.nn as nn
@@ -486,8 +486,10 @@ def train_model(num_epochs, batch_size, learning_rate, pretrained_model):
         }
         
         # 创建数据集
-        train_dataset = VideoDataset('train', str(DATASET_DIR / 'train'), data_transforms['train'])
-        val_dataset = VideoDataset('val', str(DATASET_DIR / 'val'), data_transforms['val'])
+        train_dataset = VideoDatasetVideo('train', str(DATASET_DIR / 'train'), data_transforms['train'],
+                                         sampling_strategy='random_segment')  # 训练时使用随机片段采样
+        val_dataset = VideoDatasetVideo('val', str(DATASET_DIR / 'val'), data_transforms['val'],
+                                       sampling_strategy='uniform')  # 验证时使用均匀采样
         
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
