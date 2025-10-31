@@ -19,6 +19,7 @@ import numpy as np
 # 导入项目模块
 from model import VideoNetModel
 from dataset import VideoDatasetVideo
+from version import CUR_VERSION, get_version_string
 from torchvision import transforms
 from torch.utils.data import DataLoader
 import torch.nn as nn
@@ -115,25 +116,25 @@ def get_dataset_stats():
 @app.route('/')
 def index():
     """首页 - 数据集管理"""
-    return render_template('index.html')
+    return render_template('index.html', version=CUR_VERSION)
 
 
 @app.route('/train_page')
 def train_page():
     """训练页面"""
-    return render_template('train.html')
+    return render_template('train.html', version=CUR_VERSION)
 
 
 @app.route('/test_page')
 def test_page():
     """测试页面"""
-    return render_template('test.html')
+    return render_template('test.html', version=CUR_VERSION)
 
 
 @app.route('/convert_page')
 def convert_page():
     """模型转换页面"""
-    return render_template('convert.html')
+    return render_template('convert.html', version=CUR_VERSION)
 
 
 @app.route('/api/dataset/stats', methods=['GET'])
@@ -630,20 +631,41 @@ def predict_single_video(video_path, model_path):
     """预测单个视频"""
     import cv2
     
-    # 加载模型
+    # 加载模型checkpoint
     checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
     
+    # 判断checkpoint格式并提取模型权重
     if isinstance(checkpoint, dict):
-        num_classes = checkpoint.get('num_classes', 50)
-        class_names = checkpoint.get('class_names', [f'Class_{i}' for i in range(num_classes)])
-        state_dict = checkpoint['model_state_dict']
+        if 'model_state_dict' in checkpoint:
+            # 新格式：完整checkpoint
+            state_dict = checkpoint['model_state_dict']
+            num_classes = checkpoint.get('num_classes', 50)
+            class_names = checkpoint.get('class_names', [f'Class_{i}' for i in range(num_classes)])
+        else:
+            # 旧格式：直接是state_dict
+            state_dict = checkpoint
+            # 尝试从数据集获取类别
+            stats = get_dataset_stats()
+            class_names = [c['name'] for c in stats['classes']]
+            num_classes = len(class_names) if class_names else 50
+            if num_classes == 0:
+                num_classes = 50
+                class_names = [f'Class_{i}' for i in range(num_classes)]
     else:
-        # 尝试从数据集获取类别
+        # 非常旧的格式
+        state_dict = checkpoint
         stats = get_dataset_stats()
         class_names = [c['name'] for c in stats['classes']]
-        num_classes = len(class_names)
-        state_dict = checkpoint
+        num_classes = len(class_names) if class_names else 50
+        if num_classes == 0:
+            num_classes = 50
+            class_names = [f'Class_{i}' for i in range(num_classes)]
     
+    # 处理多GPU训练的模型（移除'module.'前缀）
+    if any(key.startswith('module.') for key in state_dict.keys()):
+        state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
+    
+    # 初始化模型
     model = VideoNetModel(num_classes=num_classes)
     model.load_state_dict(state_dict)
     model.eval()
@@ -907,7 +929,7 @@ def convert_to_openvino_format(onnx_path, output_dir):
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("BXC_VideoNet Web 管理后台")
+    print(f"BXC_VideoNet Web 管理后台 v{CUR_VERSION}")
     print("=" * 60)
     print("启动服务器...")
     print("访问地址: http://127.0.0.1:5000")

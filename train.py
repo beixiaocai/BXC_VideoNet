@@ -7,6 +7,7 @@ from torchvision import transforms
 # from dataset_image import VideoDataset
 from dataset import VideoDatasetVideo
 from model import VideoNetModel
+from version import CUR_VERSION, print_version
 from tqdm import tqdm
 import numpy as np
 class EarlyStopping:
@@ -290,6 +291,10 @@ def train():
 
 
 if __name__ == '__main__':
+    # 打印版本信息
+    print_version()
+    print()
+    
     pretrained_model_path = None # 预训练模型路径，不填写则不加载预训练模型
     # pretrained_model_path = "models_20251012_ucf50/best_model_epoch242_aac0.9314.pth"
     data_dir = 'E:\\download\\BXC_VideoNet\\UCF50'

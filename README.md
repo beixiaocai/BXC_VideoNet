@@ -1,7 +1,8 @@
-# BXC_VideoNet - 视频分类深度学习训练框架
+# BXC_VideoNet - 视频动作识别深度学习框架
 
 <div align="center">
 
+[![Version](https://img.shields.io/badge/version-1.01-blue.svg)](version.py)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/pytorch-2.1.0-red.svg)](https://pytorch.org/)
@@ -22,7 +23,7 @@
 
 ## 📖 项目简介
 
-BXC_VideoNet 是一个面向视频片段分类的深度学习训练框架，提供完整的模型训练、测试、部署解决方案。项目包含：
+BXC_VideoNet 是一个面向视频动作识别的深度学习训练框架，提供完整的模型训练、测试、部署解决方案。项目包含：
 
 - 🎯 **命令行训练工具**：传统的 Python 脚本训练方式
 - 🌐 **Web 管理后台**：基于 Flask 的可视化训练管理平台
@@ -33,8 +34,10 @@ BXC_VideoNet 是一个面向视频片段分类的深度学习训练框架，提�
 
 ### 核心功能
 - ✅ 视频分类模型训练（基于 PyTorch）
+- ✅ **智能采样策略**：支持3种视频帧采样策略（uniform/random_segment/dense）
 - ✅ UCF50/UCF101 数据集支持
 - ✅ 数据集自动分割（train/val）
+- ✅ **新旧模型兼容**：自动识别和加载多种模型格式
 - ✅ 模型导出（PyTorch → ONNX → OpenVINO）
 - ✅ 实时训练进度监控
 - ✅ 断点续训支持
@@ -199,10 +202,27 @@ python split_ucf.py
 python train.py
 ```
 
+启动时会显示版本信息：
+```
+============================================================
+BXC_VideoNet - 视频动作识别深度学习框架
+版本: v1.01
+作者: 北小菜
+发布日期: 2025-10-31
+============================================================
+```
+
 #### 4. 测试模型
 
 ```bash
 python test.py
+```
+
+可以在test.py中配置采样策略：
+```python
+# 配置区
+num_frames = 16  # 采样帧数（可修改为32、64等）
+sampling_strategy = 'uniform'  # 采样策略：'uniform', 'random_segment', 'dense'
 ```
 
 #### 5. 导出模型
@@ -223,11 +243,12 @@ mo --input_model best_model.onnx --output_dir best_model_openvino_model
 
 ```
 BXC_VideoNet/
-├── app.py                      # Web 服务器主程序
+├── version.py                  # 版本管理模块（v1.01）
+├── app.py                      # Flask Web 服务器主程序
 ├── train.py                    # 命令行训练脚本
-├── test.py                     # 模型测试脚本
-├── export2onnx.py              # ONNX 导出脚本
-├── split_ucf.py                # UCF 数据集分割脚本
+├── test.py                     # 模型测试脚本（支持3种采样策略）
+├── export2onnx.py              # 模型导出ONNX脚本
+├── split_ucf.py                # UCF数据集分割工具
 ├── model.py                    # 模型架构定义
 ├── dataset.py                  # 数据集加载模块（支持视频和图像）
 │   ├── VideoDatasetVideo      # 从视频文件直接读取（支持3种采样策略）
@@ -693,6 +714,28 @@ if epochs_no_improve >= patience:
 | dense | 87.8% (+2.6%) | 130s | ⭐⭐ |
 
 > 📈 **推荐配置**：训练集使用 `random_segment` 策略，验证集使用 `uniform` 策略，可获得最佳性能提升。
+
+## 📝 更新日志
+
+### v1.01 (2025-10-31) - 采样策略优化版
+
+**新增功能**：
+- ✅ **视频采样策略优化**：新增3种智能采样策略（uniform/random_segment/dense）
+- ✅ **数据增强增强**：random_segment策略可将准确率提升3-8%
+- ✅ **版本管理系统**：新增version.py，统一管理项目版本号
+- ✅ **模型兼容性提升**：自动识别和加载新旧模型格式
+- ✅ **Web界面优化**：所有页面显示版本号
+
+**修复问题**：
+- 🐛 修复test.py和export2onnx.py中的模型加载错误
+- 🐛 修复app.py中Web测试和转换功能的兼容性问题
+- 🐛 优化数据集加载模块，合并为dataset.py
+
+**文档更新**：
+- 📚 新增VIDEO_SAMPLING_STRATEGIES.md采样策略详细说明
+- 📚 更新README.md，补充采样策略和版本管理说明
+
+---
 
 ## 🤝 贡献指南
 

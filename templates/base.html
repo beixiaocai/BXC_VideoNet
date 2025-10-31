@@ -38,6 +38,17 @@
         .header h1 {
             font-size: 24px;
             margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .version-badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: normal;
         }
 
         .header p {
@@ -365,7 +376,10 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>BXC_VideoNet</h1>
+            <h1>
+                BXC_VideoNet
+                <span class="version-badge">v{{ version }}</span>
+            </h1>
             <p>视频分类训练平台 | 作者：北小菜</p>
             <nav class="nav">
                 <a href="/" class="nav-btn {% if request.path == '/' %}active{% endif %}">📁 数据集管理</a>

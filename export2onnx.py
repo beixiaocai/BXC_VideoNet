@@ -1,6 +1,7 @@
 import torch
 import torch.onnx
 from model import VideoNetModel
+from version import CUR_VERSION, print_version
 import os
 
 
@@ -9,25 +10,43 @@ def convert_to_onnx(model_path='best_model.pth', output_path='best_model.onnx',n
     print(f"输入模型: {model_path}")
     print(f"输出ONNX文件: {output_path}")
 
+    # 加载模型checkpoint
+    checkpoint = torch.load(model_path, map_location=torch.device('cpu'))
+    
+    # 判断checkpoint格式并提取模型权重
+    if isinstance(checkpoint, dict):
+        if 'model_state_dict' in checkpoint:
+            # 新格式：完整checkpoint
+            state_dict = checkpoint['model_state_dict']
+            num_classes_from_model = checkpoint.get('num_classes', num_classes)
+            print(f"加载完整checkpoint: epoch={checkpoint.get('epoch', 'N/A')}, "
+                  f"best_acc={checkpoint.get('best_acc', 'N/A'):.4f}")
+            # 如果没有指定num_classes，使用模型中保存的值
+            if num_classes == 0:
+                num_classes = num_classes_from_model
+        else:
+            # 旧格式：直接是state_dict
+            state_dict = checkpoint
+    else:
+        # 非常旧的格式
+        state_dict = checkpoint
+    
+    # 处理多GPU训练的模型（移除'module.'前缀）
+    if any(key.startswith('module.') for key in state_dict.keys()):
+        print("检测到多GPU训练模型，移除module.前缀")
+        state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
+    
     # 初始化模型
     model = VideoNetModel(num_classes=num_classes)
     
-    # 加载模型权重 - 处理多GPU训练的情况
+    # 加载模型权重
     try:
-        state_dict = torch.load(model_path, map_location=torch.device('cpu'))
-        # 检查是否是多GPU训练的模型
-        if any(key.startswith('module.') for key in state_dict.keys()):
-            # 移除DataParallel包装的键前缀
-            new_state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
-            model.load_state_dict(new_state_dict)
-        else:
-            model.load_state_dict(state_dict)
+        model.load_state_dict(state_dict)
+        model.eval()
+        print(f"模型加载成功，类别数: {num_classes}")
     except Exception as e:
         print(f"加载模型时出错: {e}")
         return
-    
-    model.eval()
-    print("模型加载成功")
     
     # 创建输入张量 - 使用与训练相同的输入尺寸
     batch_size = 1
@@ -96,8 +115,15 @@ def verify_onnx_model(onnx_path):
 
 
 if __name__ == '__main__':
-    model_path = "models_20251012001_ucf50/best_model_epoch242_aac0.9314.pth"
-    output_path = "models_20251012001_ucf50/best_model_epoch242_aac0.9314.onnx"
+    # 打印版本信息
+    print_version()
+    print()
+    
+    # model_path = "models_20251012001_ucf50/best_model_epoch242_aac0.9314.pth"
+    # output_path = "models_20251012001_ucf50/best_model_epoch242_aac0.9314.onnx"
+    model_path = "models_20251031001_ucf50/best_model_epoch222_aac0.9631.pth"
+    output_path = "models_20251031001_ucf50/best_model_epoch222_aac0.9631.onnx"
+
     # UCF50数据集的50个动作类别名称 （根据实际数据集修改）
     class_names = ['BaseballPitch', 'Basketball', 'BenchPress', 'Biking', 'Billiards', 'BreastStroke', 'CleanAndJerk', 'Diving', 'Drumming', 'Fencing', 'GolfSwing', 'HighJump', 'HorseRace', 'HorseRiding', 'HulaHoop', 'JavelinThrow', 'JugglingBalls', 'JumpingJack', 'JumpRope', 'Kayaking', 'Lunges', 'MilitaryParade', 'Mixing', 'Nunchucks', 'PizzaTossing', 'PlayingGuitar', 'PlayingPiano', 'PlayingTabla', 'PlayingViolin', 'PoleVault', 'PommelHorse', 'PullUps', 'Punch', 'PushUps', 'RockClimbingIndoor', 'RopeClimbing', 'Rowing', 'SalsaSpin', 'SkateBoarding', 'Skiing', 'Skijet', 'SoccerJuggling', 'Swing', 'TaiChi', 'TennisSwing', 'ThrowDiscus', 'TrampolineJumping', 'VolleyballSpiking', 'WalkingWithDog', 'YoYo']
     print(f"class_names: {len(class_names)}")
